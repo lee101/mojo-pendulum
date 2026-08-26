@@ -510,3 +510,17 @@ def test_batch_parallel_threshold_and_simd_tail(count):
     encoded = mojo.to_iso8601_many(shifted)
     assert len(encoded) == count
     assert encoded[0] == encoded[-1] == "2024-03-01T23:59:58.123456"
+
+
+def test_scalar_parser_simd_tail_clears_reused_fields():
+    mojo.parse("2024-02-29T23:59:58.123456+05:30")
+    parsed = mojo.parse("2025", tz=None)
+    assert fields(parsed) == (2025, 1, 1, 0, 0, 0, 0, None)
+
+
+@pytest.mark.parametrize("count", [16383, 16384])
+def test_format_parallel_threshold(count):
+    value = mojo.datetime(2024, 2, 29, 12, 30, 5, 123456, tz=5.5)
+    encoded = mojo.to_iso8601_many([value] * count)
+    assert len(encoded) == count
+    assert encoded[0] == encoded[-1] == "2024-02-29T12:30:05.123456+05:30"

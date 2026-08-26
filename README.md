@@ -78,11 +78,11 @@ reporting a timing.
 
 | case | mojo-pendulum | Pendulum 3.2 | ratio |
 | --- | ---: | ---: | ---: |
-| parse scalar loop (25k) | 132.79 ms | 188.68 ms | 1.42x faster |
-| `parse_many` (100k) | 334.76 ms | 749.49 ms | 2.24x faster |
-| add scalar loop (25k) | 94.27 ms | 163.55 ms | 1.73x faster |
-| `add_many` (100k) | 347.02 ms | 613.20 ms | 1.77x faster |
-| `to_iso8601_many` (100k) | 145.63 ms | 367.13 ms | 2.52x faster |
+| parse scalar loop (25k) | 90.93 ms | 197.27 ms | 2.17x faster |
+| `parse_many` (100k) | 160.35 ms | 772.82 ms | 4.82x faster |
+| add scalar loop (25k) | 89.15 ms | 161.53 ms | 1.81x faster |
+| `add_many` (100k) | 149.66 ms | 589.55 ms | 3.94x faster |
+| `to_iso8601_many` (100k) | 153.23 ms | 371.45 ms | 2.42x faster |
 
 Scalar parsing passes encoded bytes directly and reuses thread-local result storage. Naive
 scalar datetime arithmetic avoids native interchange storage, while batch arithmetic stays
@@ -101,9 +101,10 @@ writes fixed-stride 40-byte rows plus an `int64` length array. No Mojo allocatio
 the FFI boundary, so there is no cross-runtime ownership or release protocol.
 
 The parser clears result rows with architecture-width SIMD stores and a scalar tail.
-Arithmetic batches stay serial below 4,096 items and split larger independent workloads
-across physical CPU cores. Parsing and formatting remain serial because their lighter
-native work did not recover thread-runtime overhead.
+Arithmetic batches stay serial below 4,096 items, and ISO formatting stays serial below
+16,384 items. Larger independent batches are split into 16 chunks across the CPU worker
+pool. Parsing remains serial because its lighter native work did not recover thread-runtime
+overhead.
 
 Calendar conversion uses proleptic-Gregorian ordinals and a constant-time civil-date
 transform. Month and year changes are applied before fixed day/time changes, with the day

@@ -1,9 +1,14 @@
 """Gregorian calendar arithmetic and ISO-8601 parsing kernels."""
 
+from max.algorithm import parallelize
+from std.runtime import initialize_runtime
 from std.sys.info import simd_width_of
 
 comptime BPtr = UnsafePointer[UInt8, AnyOrigin[mut=True]]
 comptime IPtr = UnsafePointer[Int64, AnyOrigin[mut=True]]
+comptime PARALLEL_ADD_THRESHOLD = 4096
+comptime PARALLEL_FORMAT_THRESHOLD = 16384
+comptime PARALLEL_TASKS = 16
 
 
 def is_leap(year: Int) -> Bool:
@@ -555,20 +560,45 @@ def add_datetime_many_impl(
     var src = IPtr(unsafe_from_address=src_addr)
     var dst = IPtr(unsafe_from_address=dst_addr)
 
-    for i in range(count):
-        add_many_item(
-            src,
-            dst,
-            i,
-            years,
-            months,
-            weeks,
-            days,
-            hours,
-            minutes,
-            seconds,
-            micros,
-        )
+    if count >= PARALLEL_ADD_THRESHOLD:
+        initialize_runtime()
+        var task_count = min(PARALLEL_TASKS, count)
+
+        @parameter
+        def add_chunk(task: Int):
+            var first = task * count // task_count
+            var last = (task + 1) * count // task_count
+            for i in range(first, last):
+                add_many_item(
+                    src,
+                    dst,
+                    i,
+                    years,
+                    months,
+                    weeks,
+                    days,
+                    hours,
+                    minutes,
+                    seconds,
+                    micros,
+                )
+
+        parallelize[add_chunk](task_count, task_count)
+    else:
+        for i in range(count):
+            add_many_item(
+                src,
+                dst,
+                i,
+                years,
+                months,
+                weeks,
+                days,
+                hours,
+                minutes,
+                seconds,
+                micros,
+            )
     for i in range(count):
         if dst[i * 7] == 0:
             return i + 1
@@ -623,10 +653,25 @@ def format_iso_many_impl(
     var output = BPtr(unsafe_from_address=output_addr)
     var lengths = IPtr(unsafe_from_address=lengths_addr)
 
-    for i in range(count):
-        lengths[i] = Int64(
-            format_iso(fields + i * 9, output + i * stride)
-        )
+    if count >= PARALLEL_FORMAT_THRESHOLD:
+        initialize_runtime()
+        var task_count = min(PARALLEL_TASKS, count)
+
+        @parameter
+        def format_chunk(task: Int):
+            var first = task * count // task_count
+            var last = (task + 1) * count // task_count
+            for i in range(first, last):
+                lengths[i] = Int64(
+                    format_iso(fields + i * 9, output + i * stride)
+                )
+
+        parallelize[format_chunk](task_count, task_count)
+    else:
+        for i in range(count):
+            lengths[i] = Int64(
+                format_iso(fields + i * 9, output + i * stride)
+            )
     return 0
 
 
