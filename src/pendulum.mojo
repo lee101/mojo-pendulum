@@ -1,11 +1,9 @@
 """Gregorian calendar arithmetic and ISO-8601 parsing kernels."""
 
-from std.algorithm import parallelize
-from std.sys.info import num_physical_cores, simd_width_of
+from std.sys.info import simd_width_of
 
 comptime BPtr = UnsafePointer[UInt8, AnyOrigin[mut=True]]
 comptime IPtr = UnsafePointer[Int64, AnyOrigin[mut=True]]
-comptime PARALLEL_THRESHOLD = 4096
 
 
 def is_leap(year: Int) -> Bool:
@@ -557,48 +555,20 @@ def add_datetime_many_impl(
     var src = IPtr(unsafe_from_address=src_addr)
     var dst = IPtr(unsafe_from_address=dst_addr)
 
-    if count >= PARALLEL_THRESHOLD:
-        var workers = min(num_physical_cores(), count)
-        var chunk = (count + workers - 1) // workers
-
-        @parameter
-        @__copy_capture(src_addr, dst_addr, years, months, weeks, days, hours, minutes, seconds, micros, chunk, count)
-        def add_chunk(worker: Int):
-            var task_src = IPtr(unsafe_from_address=src_addr)
-            var task_dst = IPtr(unsafe_from_address=dst_addr)
-            var begin = worker * chunk
-            var end = min(begin + chunk, count)
-            for i in range(begin, end):
-                add_many_item(
-                    task_src,
-                    task_dst,
-                    i,
-                    years,
-                    months,
-                    weeks,
-                    days,
-                    hours,
-                    minutes,
-                    seconds,
-                    micros,
-                )
-
-        parallelize[add_chunk](workers, workers)
-    else:
-        for i in range(count):
-            add_many_item(
-                src,
-                dst,
-                i,
-                years,
-                months,
-                weeks,
-                days,
-                hours,
-                minutes,
-                seconds,
-                micros,
-            )
+    for i in range(count):
+        add_many_item(
+            src,
+            dst,
+            i,
+            years,
+            months,
+            weeks,
+            days,
+            hours,
+            minutes,
+            seconds,
+            micros,
+        )
     for i in range(count):
         if dst[i * 7] == 0:
             return i + 1
